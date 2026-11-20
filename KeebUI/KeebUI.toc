@@ -4,6 +4,7 @@
 ## Author: Keeb
 ## Version: 0.9.0
 ## Category: Unit Frames
+## X-Curse-Project-ID: 1819682
 ## SavedVariables: KeebUIDB
 ## IconTexture: Interface\Icons\Spell_Holy_SealOfMight
 

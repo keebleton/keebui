@@ -44,7 +44,7 @@ installs from.
 
 One-time setup:
 
-- Create the project on CurseForge and put its id in `KeebUI/KeebUI.toc` as `## X-Curse-Project-ID: <id>`.
+- The CurseForge project is 1819682; its id is in `KeebUI/KeebUI.toc` as `## X-Curse-Project-ID`.
 - A CurseForge API token (CurseForge account settings, API tokens) saved on GitHub as the repository secret
   `CF_API_KEY` (Settings > Secrets and variables > Actions).
 
