@@ -1,0 +1,22 @@
+# How the BigWigs packager builds KeebUI for release (run by
+# .github/workflows/release.yml when a version tag is pushed). The addon lives
+# in KeebUI/: it is moved to the top of the zip, and the rest of the repo
+# (tests, tools, notes, launchers) is left out.
+package-as: KeebUI
+
+# The release notes CurseForge shows: this version's, written for players.
+# (Without it the packager writes its own from the commits into the package
+# folder, which then stays in the zip as a stray folder.)
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+move-folders:
+  KeebUI/KeebUI: KeebUI
+
+ignore:
+  - tests
+  - tools
+  - dist
+  - "*.md"
+  - "*.bat"

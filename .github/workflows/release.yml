@@ -1,0 +1,52 @@
+# Releases KeebUI when a version tag (v0.9.0, v0.9.1, ...) is pushed: checks the
+# tag matches KeebUI.toc's version, runs the checks, then the BigWigs packager
+# builds KeebUI-<tag>.zip (see .pkgmeta), uploads it to CurseForge (the project
+# id is in KeebUI.toc) and makes the GitHub release with release.json, which
+# WowUp installs from.
+#
+# One-time setup: a CurseForge API token saved as the repository secret
+# CF_API_KEY (Settings > Secrets and variables > Actions), and the CurseForge
+# project id in KeebUI/KeebUI.toc (## X-Curse-Project-ID). Without either, the
+# release still reaches GitHub and WowUp, but not CurseForge.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag matches the addon's version
+        run: |
+          toc=$(grep -m1 '^## Version:' KeebUI/KeebUI.toc | awk '{print $3}' | tr -d '\r')
+          notes=$(head -n1 CHANGELOG.md | awk '{print $3}' | tr -d '\r')
+          echo "tag $GITHUB_REF_NAME, KeebUI.toc $toc, CHANGELOG.md $notes"
+          test "v$toc" = "$GITHUB_REF_NAME" && test "$toc" = "$notes"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run the checks
+        run: |
+          pip install lupa
+          python tests/run_tests.py
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2
+        with:
+          # (one template: the zip and the name CurseForge shows)
+          args: -n "KeebUI-{project-version}"

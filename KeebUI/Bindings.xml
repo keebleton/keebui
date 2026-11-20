@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="CLICK KeebUITrinket13:LeftButton" header="KEEBUI" category="ADDONS"/>
+	<Binding name="CLICK KeebUITrinket14:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK KeebUIMarkKey:LeftButton" category="ADDONS"/>
+</Bindings>
