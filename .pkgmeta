@@ -2,7 +2,10 @@
 # .github/workflows/release.yml when a version tag is pushed). The addon lives
 # in KeebUI/: it is moved to the top of the zip, and the rest of the repo
 # (tests, tools, notes, launchers) is left out.
-package-as: KeebUI
+# The package name must differ from the addon folder's name: the packager moves
+# <package>/KeebUI out to KeebUI, and cannot do that if both are called KeebUI.
+# (The zip's own name comes from the workflow, not from here.)
+package-as: KeebUIPackage
 
 # The release notes CurseForge shows: this version's, written for players.
 # (Without it the packager writes its own from the commits into the package
@@ -12,7 +15,7 @@ manual-changelog:
   markup-type: markdown
 
 move-folders:
-  KeebUI/KeebUI: KeebUI
+  KeebUIPackage/KeebUI: KeebUI
 
 ignore:
   - tests
