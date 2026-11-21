@@ -1,4 +1,9 @@
-# KeebUI 0.9.1
+# KeebUI 0.9.2
+
+- **Raid and party frames: fixed an error in combat.** 0.9.1 printed a "dispellable debuffs" error in chat during fights. That is gone.
+- **A single removable debuff is now drawn large.** When a member has just one debuff you can remove, its icon is full size in the middle of their frame. With two or more, each is shown at half size side by side, as before.
+
+New in 0.9.1:
 
 - **Raid frames: cleaner outlines.** The red aggro outline is now drawn inside each raid cell, so neighbouring cells no longer cut it off. The white outline on your target sits exactly on the cell's edge.
 - **Raid and party frames: tanks first.** Within each raid group, and in the party column, members are ordered tank, healer, then everyone else, by their assigned role. Turn it off under Layout in `/keebui frames`.

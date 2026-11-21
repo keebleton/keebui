@@ -597,119 +597,117 @@ end
 -- cell, each with its stack count. One on its own is drawn at full size;
 -- two or more are each drawn at half that, side by side.
 --
--- The game owns these buttons and will not let them be resized during a
--- fight, so the buttons themselves stay half size the whole time. What
--- changes is only the picture drawn on a button, which is ours to resize:
--- when exactly one button is showing, its picture is drawn large.
+-- The game will not let an addon ask "how many debuffs are showing" during a
+-- fight: whether one of its debuff buttons is shown comes back as a value
+-- that cannot be tested (trying to is an error), and the buttons cannot be
+-- resized mid-fight either. So there are two displays in the same place:
+--   * one large icon, for the first removable debuff
+--   * a row of half-size icons, for all of them
+-- and only one of the two is visible at a time. Which one is decided by
+-- handing "is the SECOND small icon showing?" straight to the pictures as
+-- their visibility, without ever looking at the answer: if a second one
+-- is showing the row is seen and the large icon is not, otherwise the reverse.
 local function DispelGroup(d, button, S)
     if not next(MINE) then return nil end
     local big = math.max(12, S.dispelSize or 22)
     local small = math.max(8, math.floor(big / 2 + 0.5))
-    local container = NewContainer(button)
-    container:SetPoint("CENTER", d.health, "CENTER")
-    container:SetFrameLevel(d.health:GetFrameLevel() + 9)
-
-    local parts = {} -- button -> { texture, count }
-    local order = {}
-
-    -- Is this button showing a debuff right now? (The game may keep spare
-    -- buttons around; one that is hidden or fully transparent does not count.)
-    local function Active(b)
-        if not b:IsShown() then return false end
-        local ok, alpha = pcall(b.GetAlpha, b)
-        if ok and not ns.IsSecret(alpha) and alpha < 0.05 then return false end
-        return true
+    local level = d.health:GetFrameLevel() + 9
+    local function Filter()
+        local types = {}
+        for kind in pairs(MINE) do types[kind] = true end
+        return { includeDispelTypes = types, excludeSpellIDs = IGNORE_ID }
     end
 
-    -- What each button looks like to an addon, for troubleshooting: written to
-    -- the settings file per member, so a cell with a debuff can be compared
-    -- with one without.
-    local lastNote
-    local function Note(showing, size)
-        if not (ns.db and d.unit) then return end
-        local lines = { ("buttons=%d showing=%d size=%d combat=%s"):format(#order, showing, size, tostring(InCombatLockdown())) }
-        for n, b in ipairs(order) do
-            local texture = parts[b].texture
-            local function read(fn, ...)
-                local ok, value = pcall(fn, ...)
-                if not ok then return "error" end
-                if ns.IsSecret(value) then return "hidden" end
-                if type(value) == "number" then return ("%.1f"):format(value) end
-                return tostring(value)
+    local single, many = {}, {} -- everything drawn for the large icon / for the row
+    local rowButtons = {}
+    local Choose
+
+    local function Dress(b, size, into)
+        b:SetSize(size, size)
+        local icon = b:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(b)
+        icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        local edge = b:CreateTexture(nil, "BACKGROUND")
+        edge:SetColorTexture(0, 0, 0, 1)
+        edge:SetPoint("TOPLEFT", b, "TOPLEFT", -1, 1)
+        edge:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 1, -1)
+        b:SetIcon(icon)
+        into[#into + 1] = icon
+        into[#into + 1] = edge
+        if S.stacks ~= false then
+            local count = StackCount(b, icon, math.max(9, math.floor(size * 0.55)))
+            if count then into[#into + 1] = count end
+        end
+        ns.AuraTooltip(b, nil)
+    end
+
+    -- the large icon
+    local alone = NewContainer(button)
+    alone:SetPoint("CENTER", d.health, "CENTER")
+    alone:AddAuraSlot("dispelAlone", "HARMFUL", {
+        candidateFilters = Filter(),
+        initializeFrame = function(slot)
+            slot:ClearAllPoints()
+            slot:SetPoint("CENTER", d.health, "CENTER", 0, 0)
+            slot:SetFrameLevel(level)
+            Dress(slot, big, single)
+        end,
+    })
+
+    -- the row of half-size icons
+    local row = NewContainer(button)
+    row:SetPoint("CENTER", d.health, "CENTER")
+    row:SetFrameLevel(level)
+    row:AddAuraGroup("dispel", "HARMFUL", {
+        maxFrameCount = 4,
+        candidateFilters = Filter(),
+        initializeFrame = function(b)
+            Dress(b, small, many)
+            rowButtons[#rowButtons + 1] = b
+            -- hidden until it is known that there is more than one
+            for _, region in ipairs(many) do region:SetAlpha(0) end
+            b:HookScript("OnShow", function() if Choose then Choose() end end)
+            b:HookScript("OnHide", function() if Choose then Choose() end end)
+        end,
+        layout = { elementWidth = small, elementHeight = small, elementSpacing = 2, lineSpacing = 2 },
+    })
+
+    local function Apply()
+        local second = rowButtons[2]
+        local more = false
+        if second then
+            local ok, shown = pcall(second.IsShown, second)
+            if ok then more = shown end
+        end
+        if ns.IsSecret(more) then
+            -- cannot be looked at: hand it to each picture as its visibility
+            for _, region in ipairs(single) do
+                if region.SetAlphaFromBoolean then region:SetAlphaFromBoolean(more, 0, 1) else region:SetAlpha(0) end
             end
-            lines[#lines + 1] = ("%d: shown=%s visible=%s alpha=%s width=%s | picture shown=%s file=%s atlas=%s width=%s"):format(
-                n, read(b.IsShown, b), read(b.IsVisible, b), read(b.GetAlpha, b), read(b.GetWidth, b),
-                read(texture.IsShown, texture), read(texture.GetTexture, texture),
-                texture.GetAtlas and read(texture.GetAtlas, texture) or "n/a", read(texture.GetWidth, texture))
-        end
-        local text = table.concat(lines, " ;; ")
-        if text == lastNote then return end
-        lastNote = text
-        ns.db.dispelNotes = type(ns.db.dispelNotes) == "table" and ns.db.dispelNotes or {}
-        ns.db.dispelNotes[d.unit] = date("%H:%M:%S") .. " " .. text
-    end
-
-    -- One debuff alone is drawn large, two or more at half that. The buttons
-    -- themselves cannot be resized mid-fight, so only the picture on each is.
-    local function Resize()
-        local showing = 0
-        for _, b in ipairs(order) do
-            if Active(b) then showing = showing + 1 end
-        end
-        local size = showing <= 1 and big or small
-        for _, b in ipairs(order) do
-            local part = parts[b]
-            part.texture:SetSize(size, size) -- every time: the game may have put it back
-            if part.count and part.size ~= size then
-                ns.SetFont(part.count, math.max(9, math.floor(size * 0.55)))
+            for _, region in ipairs(many) do
+                if region.SetAlphaFromBoolean then region:SetAlphaFromBoolean(more, 1, 0) else region:SetAlpha(1) end
             end
-            part.size = size
+        else
+            for _, region in ipairs(single) do region:SetAlpha(more and 0 or 1) end
+            for _, region in ipairs(many) do region:SetAlpha(more and 1 or 0) end
         end
-        pcall(Note, showing, size)
     end
-    local SafeResize = ns.Safe("dispellable debuffs", Resize)
+    local SafeApply = ns.Safe("dispellable debuffs", Apply)
     local queued = false
-    local function Queue()
+    Choose = function()
         if queued then return end
         queued = true
         C_Timer.After(0, function()
             queued = false
-            SafeResize()
+            SafeApply()
         end)
     end
-    d.dispelRefresh = Queue
-
-    local types = {}
-    for kind in pairs(MINE) do types[kind] = true end
-    container:AddAuraGroup("dispel", "HARMFUL", {
-        maxFrameCount = 4,
-        candidateFilters = { includeDispelTypes = types, excludeSpellIDs = IGNORE_ID },
-        initializeFrame = function(b)
-            b:SetSize(small, small)
-            local texture = b:CreateTexture(nil, "ARTWORK")
-            texture:SetPoint("CENTER", b, "CENTER")
-            texture:SetSize(small, small)
-            texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-            local edge = b:CreateTexture(nil, "BACKGROUND")
-            edge:SetColorTexture(0, 0, 0, 1)
-            edge:SetPoint("TOPLEFT", texture, "TOPLEFT", -1, 1)
-            edge:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", 1, -1)
-            b:SetIcon(texture)
-            local part = { texture = texture, size = small }
-            if S.stacks ~= false then part.count = StackCount(b, texture, 10) end
-            parts[b] = part
-            order[#order + 1] = b
-            b:HookScript("OnShow", Queue)
-            b:HookScript("OnHide", Queue)
-            ns.AuraTooltip(b, nil)
-        end,
-        layout = { elementWidth = small, elementHeight = small, elementSpacing = 2, lineSpacing = 2 },
-    })
-    -- auras can change without any of the above firing, so look again a few times a second
+    d.dispelRefresh = Choose
+    -- auras can change without anything above firing, so look again a few times a second
     C_Timer.NewTicker(0.5, function()
-        if button:IsVisible() and #order > 0 then SafeResize() end
+        if button:IsVisible() then SafeApply() end
     end)
-    return container
+    return alone, row
 end
 
 -- All of a group cell's aura displays.
@@ -724,8 +722,9 @@ local function CellContainers(d, button, cfg)
         if tint then list[#list + 1] = tint end
     end
     -- the removable debuffs themselves, in the middle
-    local dispel = DispelGroup(d, button, S)
-    if dispel then list[#list + 1] = dispel end
+    local alone, row = DispelGroup(d, button, S)
+    if alone then list[#list + 1] = alone end
+    if row then list[#list + 1] = row end
 
     -- every other debuff
     if (S.debuffCount or 0) > 0 then
