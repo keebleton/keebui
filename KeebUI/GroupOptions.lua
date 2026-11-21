@@ -237,7 +237,31 @@ local function DrawCell(c, set, row, width, height, textSize, data)
         c.power:SetWidth(math.max(width * (data.power or 0.5), 0.1))
     end
 
-    c.rim:SetShown(data.aggro and set.aggro ~= false and true or false)
+    -- aggro: a rim outside the cell where there is room, inside it where cells touch (as on the real frames)
+    local aggro = data.aggro and set.aggro ~= false and true or false
+    local tight = (set.gap or 0) < 4
+    c.rim:SetShown(aggro and not tight)
+    if not c.rimInside then
+        c.rimInside = {}
+        for n = 1, 4 do
+            local t = c:CreateTexture(nil, "OVERLAY", nil, 5)
+            t:SetColorTexture(0.95, 0.12, 0.12, 1)
+            c.rimInside[n] = t
+        end
+        c.rimInside[1]:SetPoint("TOPLEFT")
+        c.rimInside[1]:SetPoint("TOPRIGHT")
+        c.rimInside[1]:SetHeight(2)
+        c.rimInside[2]:SetPoint("BOTTOMLEFT")
+        c.rimInside[2]:SetPoint("BOTTOMRIGHT")
+        c.rimInside[2]:SetHeight(2)
+        c.rimInside[3]:SetPoint("TOPLEFT")
+        c.rimInside[3]:SetPoint("BOTTOMLEFT")
+        c.rimInside[3]:SetWidth(2)
+        c.rimInside[4]:SetPoint("TOPRIGHT")
+        c.rimInside[4]:SetPoint("BOTTOMRIGHT")
+        c.rimInside[4]:SetWidth(2)
+    end
+    for _, t in ipairs(c.rimInside) do t:SetShown(aggro and tight) end
     c.strip:SetShown(data.cast and set.castStrip ~= false and true or false)
 
     -- auras
@@ -548,6 +572,7 @@ local function Rows(forKind, forTab)
                     { { "COLUMNS", "Down" }, { "ROWS", "Across" } } },
                 { "Sort by", "By class and by name ignore raid groups", "pick", "sort",
                     { { "GROUP", "Group" }, { "CLASS", "Class" }, { "NAME", "Name" } } },
+                { "Tanks first", "In each group: tanks, then healers, then the rest, by role", "toggle", "tanksFirst" },
             }
         end
         return {
@@ -557,6 +582,7 @@ local function Rows(forKind, forTab)
             { "Gap between rows", nil, "slider", "gap", 0, 12, 1 },
             { "Grows", "From its anchor", "pick", "growUp", { { true, "Up" }, { false, "Down" } } },
             { "Show yourself", "As the first row", "toggle", "showPlayer" },
+            { "Tank on top", "By role: tank, then healer, then the rest", "toggle", "tanksFirst" },
         }
     elseif forTab == "Cell" then
         return {

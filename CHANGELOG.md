@@ -1,6 +1,11 @@
-# KeebUI 0.9.0
+# KeebUI 0.9.1
 
-The first public version.
+- **Raid frames: cleaner outlines.** The red aggro outline is now drawn inside each raid cell, so neighbouring cells no longer cut it off. The white outline on your target sits exactly on the cell's edge.
+- **Raid and party frames: tanks first.** Within each raid group, and in the party column, members are ordered tank, healer, then everyone else, by their assigned role. Turn it off under Layout in `/keebui frames`.
+- **Battlegrounds: flag carriers.** The small enemy flag carrier frames now sit at the top of the screen beside the flag score. They used to end up underneath the right-hand action bars. Your KeebUI bar layout is rewritten once to do this, so anything KeebUI places (bars, bags, menu, tooltip) goes back to its default spot.
+- **Pet frame** is half the width of your own frame.
+
+New in 0.9.0:
 
 - **Welcome screen.** On your first login KeebUI asks which pieces you want. Nothing about your interface changes until you press Apply.
 - **Unit frames.** Flat player, target, target of target and pet frames with class colours, incoming heals and a combat glow. Or keep Blizzard's own frames and just have their health bars class-coloured.

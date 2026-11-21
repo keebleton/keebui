@@ -638,8 +638,11 @@ local function Init()
     -- the pet frame hangs under the player frame, below the swing timer: the same
     -- width as it, slim, with the pet's mana / focus / energy as a thin bar
     -- (on pet classes the swing timer is above the player frame, so the pet moves up into its place)
+    -- Half the width of the player frame, lined up with its left edge.
+    local PET_WIDTH = ns.FRAME_WIDTH / 2
     local petY = ns.PetClass() and (ns.FRAME_Y - 22 - 9 - 10.5) or (ns.FRAME_Y - 53)
-    Create("pet", "Pet", ns.FRAME_WIDTH, 21, -250, petY, { textSize = 12, power = true, powerHeight = 4 })
+    Create("pet", "Pet", PET_WIDTH, 21, -250 - (ns.FRAME_WIDTH - PET_WIDTH) / 2, petY,
+        { textSize = 12, power = true, powerHeight = 4 })
 
     ns.Retire("PlayerFrame", { "healthbar", "manabar", "PlayerFrameHealthBar", "PlayerFrameManaBar" })
     ns.Retire("TargetFrame", { "healthbar", "manabar", "spellbar", "TargetFrameSpellBar", "totFrame", "TargetFrameToT" })

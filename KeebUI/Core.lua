@@ -730,7 +730,8 @@ core:RegisterEvent("PLAYER_LOGOUT")
 -- one-off troubleshooting notes some modules leave in the settings file;
 -- only kept when "/keebui debug" is on
 local NOTES = { "plateDump", "meterDump", "meterRowDump", "auraProbe", "targetAuraProbe", "plateSizeProbe",
-    "targetPlateProbe", "oathProbe", "bgProbe", "blizzProbe", "setPanelHost" }
+    "targetPlateProbe", "oathProbe", "bgProbe", "blizzProbe", "setPanelHost",
+    "dispelNote", "dispelNotes", "roleNote", "flagNote" }
 core:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_LOGOUT" then
         if ns.db and not ns.db.debug then

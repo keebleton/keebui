@@ -19,7 +19,7 @@ local Clean = ns.Clean
 ---------------------------------------------------------------------------
 local DEFAULTS = {
     party = {
-        width = 240, height = 32, text = 14, gap = 4, growUp = true, showPlayer = false,
+        width = 240, height = 32, text = 14, gap = 4, growUp = true, showPlayer = false, tanksFirst = true,
         healthText = "percent", nameColor = "white", nameLength = 0, power = "none",
         dispelSize = 24, dispelTint = true, tintStrength = 0.5, stacks = true,
         debuffCount = 3, debuffSize = 20, debuffSpot = "OUT_RIGHT",
@@ -28,7 +28,7 @@ local DEFAULTS = {
     },
     raid = {
         w10 = 122, h10 = 44, t10 = 14, w20 = 96, h20 = 38, t20 = 13, w40 = 76, h40 = 34, t40 = 12,
-        gap = 1, orientation = "COLUMNS", sort = "GROUP",
+        gap = 1, orientation = "COLUMNS", sort = "GROUP", tanksFirst = true,
         healthText = "none", nameColor = "white", nameLength = 0, power = "none",
         dispelSize = 22, dispelTint = true, tintStrength = 0.5, stacks = true,
         debuffCount = 3, debuffSize = 14, debuffSpot = "BOTTOMLEFT",
@@ -609,22 +609,63 @@ local function DispelGroup(d, button, S)
     container:SetPoint("CENTER", d.health, "CENTER")
     container:SetFrameLevel(d.health:GetFrameLevel() + 9)
 
-    local parts = {} -- button -> its picture
+    local parts = {} -- button -> { texture, count }
     local order = {}
+
+    -- Is this button showing a debuff right now? (The game may keep spare
+    -- buttons around; one that is hidden or fully transparent does not count.)
+    local function Active(b)
+        if not b:IsShown() then return false end
+        local ok, alpha = pcall(b.GetAlpha, b)
+        if ok and not ns.IsSecret(alpha) and alpha < 0.05 then return false end
+        return true
+    end
+
+    -- What each button looks like to an addon, for troubleshooting: written to
+    -- the settings file per member, so a cell with a debuff can be compared
+    -- with one without.
+    local lastNote
+    local function Note(showing, size)
+        if not (ns.db and d.unit) then return end
+        local lines = { ("buttons=%d showing=%d size=%d combat=%s"):format(#order, showing, size, tostring(InCombatLockdown())) }
+        for n, b in ipairs(order) do
+            local texture = parts[b].texture
+            local function read(fn, ...)
+                local ok, value = pcall(fn, ...)
+                if not ok then return "error" end
+                if ns.IsSecret(value) then return "hidden" end
+                if type(value) == "number" then return ("%.1f"):format(value) end
+                return tostring(value)
+            end
+            lines[#lines + 1] = ("%d: shown=%s visible=%s alpha=%s width=%s | picture shown=%s file=%s atlas=%s width=%s"):format(
+                n, read(b.IsShown, b), read(b.IsVisible, b), read(b.GetAlpha, b), read(b.GetWidth, b),
+                read(texture.IsShown, texture), read(texture.GetTexture, texture),
+                texture.GetAtlas and read(texture.GetAtlas, texture) or "n/a", read(texture.GetWidth, texture))
+        end
+        local text = table.concat(lines, " ;; ")
+        if text == lastNote then return end
+        lastNote = text
+        ns.db.dispelNotes = type(ns.db.dispelNotes) == "table" and ns.db.dispelNotes or {}
+        ns.db.dispelNotes[d.unit] = date("%H:%M:%S") .. " " .. text
+    end
+
+    -- One debuff alone is drawn large, two or more at half that. The buttons
+    -- themselves cannot be resized mid-fight, so only the picture on each is.
     local function Resize()
         local showing = 0
         for _, b in ipairs(order) do
-            if b:IsShown() then showing = showing + 1 end
+            if Active(b) then showing = showing + 1 end
         end
         local size = showing <= 1 and big or small
         for _, b in ipairs(order) do
-            local icon = parts[b]
-            if icon.size ~= size then
-                icon.size = size
-                icon.texture:SetSize(size, size)
-                if icon.count then ns.SetFont(icon.count, math.max(9, math.floor(size * 0.55))) end
+            local part = parts[b]
+            part.texture:SetSize(size, size) -- every time: the game may have put it back
+            if part.count and part.size ~= size then
+                ns.SetFont(part.count, math.max(9, math.floor(size * 0.55)))
             end
+            part.size = size
         end
+        pcall(Note, showing, size)
     end
     local SafeResize = ns.Safe("dispellable debuffs", Resize)
     local queued = false
@@ -654,9 +695,9 @@ local function DispelGroup(d, button, S)
             edge:SetPoint("TOPLEFT", texture, "TOPLEFT", -1, 1)
             edge:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", 1, -1)
             b:SetIcon(texture)
-            local icon = { texture = texture, size = small }
-            if S.stacks ~= false then icon.count = StackCount(b, texture, 10) end
-            parts[b] = icon
+            local part = { texture = texture, size = small }
+            if S.stacks ~= false then part.count = StackCount(b, texture, 10) end
+            parts[b] = part
             order[#order + 1] = b
             b:HookScript("OnShow", Queue)
             b:HookScript("OnHide", Queue)
@@ -664,6 +705,10 @@ local function DispelGroup(d, button, S)
         end,
         layout = { elementWidth = small, elementHeight = small, elementSpacing = 2, lineSpacing = 2 },
     })
+    -- auras can change without any of the above firing, so look again a few times a second
+    C_Timer.NewTicker(0.5, function()
+        if button:IsVisible() and #order > 0 then SafeResize() end
+    end)
     return container
 end
 
@@ -867,6 +912,41 @@ local function UpdateRange(d)
 end
 
 ---------------------------------------------------------------------------
+-- A rectangular outline drawn inside a frame: `inset` in from its edge and
+-- `thick` wide. Answers to the same calls as the rim texture and the
+-- target border it stands in for.
+---------------------------------------------------------------------------
+local function Outline(parent, inset, thick, sublevel)
+    local o = { parts = {} }
+    local function side(p1, x1, y1, p2, x2, y2, vertical)
+        local t = parent:CreateTexture(nil, "OVERLAY", nil, sublevel)
+        t:SetColorTexture(1, 1, 1, 1)
+        t:SetPoint(p1, x1, y1)
+        t:SetPoint(p2, x2, y2)
+        if vertical then t:SetWidth(thick) else t:SetHeight(thick) end
+        t:Hide()
+        o.parts[#o.parts + 1] = t
+    end
+    side("TOPLEFT", inset, -inset, "TOPRIGHT", -inset, -inset)
+    side("BOTTOMLEFT", inset, inset, "BOTTOMRIGHT", -inset, inset)
+    side("TOPLEFT", inset, -inset, "BOTTOMLEFT", inset, inset, true)
+    side("TOPRIGHT", -inset, -inset, "BOTTOMRIGHT", -inset, inset, true)
+    function o:SetColorTexture(r, g, b, a)
+        for _, t in ipairs(self.parts) do t:SetColorTexture(r, g, b, a or 1) end
+    end
+    function o:Show(r, g, b)
+        for _, t in ipairs(self.parts) do
+            if r then t:SetColorTexture(r, g, b, 1) end
+            t:Show()
+        end
+    end
+    function o:Hide()
+        for _, t in ipairs(self.parts) do t:Hide() end
+    end
+    return o
+end
+
+---------------------------------------------------------------------------
 -- Styling one header button
 ---------------------------------------------------------------------------
 local function Style(button, cfg)
@@ -936,16 +1016,26 @@ local function Style(button, cfg)
         d.status:SetPoint("BOTTOM", 0, 4)
     end
 
-    d.border = ns.InnerBorder(top)
-
-    -- aggro outline: a red rim just outside the cell's black edge
-    local rim = CreateFrame("Frame", nil, button)
-    rim:SetFrameLevel(math.max(button:GetFrameLevel() - 1, 0))
-    rim:SetPoint("TOPLEFT", -3, 3)
-    rim:SetPoint("BOTTOMRIGHT", 3, -3)
-    d.aggro = rim:CreateTexture(nil, "BACKGROUND")
-    d.aggro:SetAllPoints()
-    d.aggro:Hide()
+    -- Outlines. Where cells have room between them (party rows) the aggro
+    -- outline is a rim just outside the cell, and "this is my target" is a
+    -- white border just inside it. Raid cells sit shoulder to shoulder, and
+    -- a rim outside one would be half hidden under its neighbours, so there
+    -- aggro is drawn inside the cell, on its very edge. "This is my target"
+    -- is a thin white line exactly on the cell's own black edge line, so it
+    -- frames the whole cell squarely (mana bar included) and covers nothing.
+    if cfg.gap < 4 then
+        d.aggro = Outline(top, 0, 2, 2)
+        d.border = Outline(top, -1, 1, 3)
+    else
+        d.border = ns.InnerBorder(top)
+        local rim = CreateFrame("Frame", nil, button)
+        rim:SetFrameLevel(math.max(button:GetFrameLevel() - 1, 0))
+        rim:SetPoint("TOPLEFT", -3, 3)
+        rim:SetPoint("BOTTOMRIGHT", 3, -3)
+        d.aggro = rim:CreateTexture(nil, "BACKGROUND")
+        d.aggro:SetAllPoints()
+        d.aggro:Hide()
+    end
 
     d.middle = MiddleSlots(top, cfg.height - 8)
 
@@ -1223,6 +1313,27 @@ local function Start()
         end
     end))
 
+    -- What roles this client reports for group members, noted once per session
+    -- while in a group: "tanks first" depends on members having a role at all.
+    local noted = false
+    C_Timer.NewTicker(10, ns.Safe("role note", function()
+        if noted or not IsInGroup() then return end
+        noted = true
+        local roles, mainTanks, members = {}, 0, GetNumGroupMembers() or 0
+        for i = 1, members do
+            local unit = (IsInRaid() and "raid" or "party") .. i
+            if UnitExists(unit) then
+                local role = UnitGroupRolesAssigned and ns.Clean(UnitGroupRolesAssigned(unit)) or "n/a"
+                roles[tostring(role)] = (roles[tostring(role)] or 0) + 1
+            end
+            if IsInRaid() then
+                local raidRole = select(10, GetRaidRosterInfo(i))
+                if raidRole == "MAINTANK" then mainTanks = mainTanks + 1 end
+            end
+        end
+        ns.db.roleNote = { members = members, roles = roles, mainTanks = mainTanks, raid = IsInRaid() and true or false }
+    end))
+
     C_Timer.NewTicker(0.3, ns.Safe("group range", function()
         for button, d in pairs(cells) do
             if d.unit and button:IsVisible() then UpdateRange(d) end
@@ -1239,11 +1350,18 @@ local function InitParty()
     -- bottom edge sits above the cooldown icons that rest on the player frame
     local bottom = (ns.FRAME_Y or 221) + 22 + 70
     local anchor = ns.Anchor("party", "Party", PARTY.width, height, -250, bottom + height / 2)
-    local header = MakeHeader("KeebUIParty", anchor, PARTY, rows, {
+    local attributes = {
         showParty = true,
         showPlayer = S.showPlayer and true or false,
         sortMethod = "INDEX",
-    })
+    }
+    if S.tanksFirst ~= false then
+        -- the tank in the top row; a column that grows upward is filled from
+        -- the bottom, so there the order is reversed to put the tank last
+        attributes.groupBy = "ASSIGNEDROLE"
+        attributes.groupingOrder = PARTY.growUp and "NONE,DAMAGER,HEALER,TANK" or "TANK,HEALER,DAMAGER,NONE"
+    end
+    local header = MakeHeader("KeebUIParty", anchor, PARTY, rows, attributes)
     -- In a raid the raid grid already shows your own group, so the party
     -- column steps aside. The game does the hiding itself (a state driver),
     -- which is the only way that works when a raid forms mid-combat.
@@ -1317,6 +1435,15 @@ local function InitRaid()
             attributes.groupFilter = tostring(group)
             attributes.sortMethod = "INDEX"
             attributes.maxColumns = 1
+            if S.tanksFirst ~= false then
+                -- Within the group: tanks first, then healers, then the rest,
+                -- by the role each member has been given. The game does the
+                -- sorting, so it keeps up when roles change mid-fight. All four
+                -- role names are listed: a member whose role is not in the list
+                -- would be left out of the group altogether.
+                attributes.groupBy = "ASSIGNEDROLE"
+                attributes.groupingOrder = "TANK,HEALER,DAMAGER,NONE"
+            end
             headers[group] = { MakeHeader("KeebUIRaid" .. group, anchor, RAID, 5, attributes), 5 }
         end
     else

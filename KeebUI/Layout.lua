@@ -8,7 +8,7 @@ local ADDON, ns = ...
 
 local NAME = "KeebUI"
 local OLD_NAME = "CleanUI" -- what this addon and its layout were called before the rename
-local VERSION = 14
+local VERSION = 15
 local BUTTON, PADDING = 45, 3      -- stock button size at 100% and the gap between buttons
 -- The three stacked bars run at 90%: a button then covers about 61 screen
 -- pixels, almost exactly the 59 pixels of icon art shown, so icons are drawn
@@ -121,6 +121,15 @@ local function Arrange(layout)
         local buffs = viewer.BuffIcon ~= nil and FindSystem(layout, system.CooldownViewer, viewer.BuffIcon)
         if buffs then Anchor(buffs, "BOTTOMRIGHT", -130, FRAME_TOP + 6, "BOTTOM") end
     end
+
+    -- Enemy flag carriers in battlegrounds (the game's small "arena" frames):
+    -- they normally sit under the minimap, which is where the right-hand
+    -- bars are now, so the bars covered them. They go to the top of the
+    -- screen instead, just right of the flag score.
+    local unitFrames = Enum.EditModeUnitFrameSystemIndices
+    local arena = unitFrames and unitFrames.Arena ~= nil and system.UnitFrame
+        and FindSystem(layout, system.UnitFrame, unitFrames.Arena)
+    if arena then Anchor(arena, "TOPLEFT", 70, -4, "TOP") end
 
     -- quest tracker: the shortest height the game allows (about half of the default)
     local tracker = system.ObjectiveTracker and FindSystem(layout, system.ObjectiveTracker, nil)
@@ -299,7 +308,41 @@ local function Verify(triesLeft)
     end
 end
 
+-- Which of the frames the game might use for flag carriers exist here and
+-- where they are, noted once inside a battleground (for troubleshooting).
+local function NoteFlagFrames()
+    local note = {}
+    for _, name in ipairs({ "ArenaEnemyFramesContainer", "ArenaEnemyFrames", "ArenaEnemyMatchFramesContainer",
+        "CompactArenaFrame", "ArenaEnemyFrame1", "ArenaEnemyMatchFrame1" }) do
+        local frame = _G[name]
+        if frame then
+            local line = "shown=" .. tostring(frame.IsShown and frame:IsShown())
+            local ok, point, relative, relativePoint, x, y = pcall(frame.GetPoint, frame, 1)
+            if ok and point then
+                local to = type(relative) == "table" and relative.GetName and relative:GetName() or tostring(relative)
+                line = line .. (" at %s of %s (%s) %.0f,%.0f"):format(point, tostring(to), tostring(relativePoint), x or 0, y or 0)
+            end
+            local parent = frame.GetParent and frame:GetParent()
+            line = line .. " parent=" .. tostring(parent and parent.GetName and parent:GetName())
+            note[name] = line
+        end
+    end
+    local unitFrames = Enum.EditModeUnitFrameSystemIndices
+    note.arenaSystem = tostring(unitFrames and unitFrames.Arena)
+    ns.db.flagNote = note
+end
+
 local function Init()
+    do
+        local watcher = CreateFrame("Frame")
+        watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+        watcher:SetScript("OnEvent", function()
+            local inInstance, kind = IsInInstance()
+            if inInstance and kind == "pvp" then
+                C_Timer.After(90, ns.Safe("flag frames note", NoteFlagFrames))
+            end
+        end)
+    end
     if ns.db.layoutVersion ~= VERSION then
         Attempt(true, 15) -- a new version of the layout: write it
     elseif ns.db.layoutVerified ~= VERSION then
