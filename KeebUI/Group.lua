@@ -91,8 +91,9 @@ local function Config(kind)
     return { kind = kind, S = S, width = S.w40, height = S.h40, text = S.t40, gap = S.gap }
 end
 
--- Where an icon row goes, by spot name.
-local function PlaceAt(frame, button, health, spot)
+-- Where an icon row goes, by spot name. `lift` raises rows along the bottom
+-- edge by that much, to clear the thin power bar when a cell has one.
+local function PlaceAt(frame, button, health, spot, lift)
     spot = spot or "BOTTOMLEFT"
     if spot == "OUT_LEFT" then
         frame:SetPoint("RIGHT", button, "LEFT", -4, 0)
@@ -100,7 +101,7 @@ local function PlaceAt(frame, button, health, spot)
         frame:SetPoint("LEFT", button, "RIGHT", 4, 0)
     else
         local x = spot:find("LEFT") and 2 or (spot:find("RIGHT") and -2 or 0)
-        local y = spot:find("TOP") and -2 or (spot:find("BOTTOM") and 2 or 0)
+        local y = spot:find("TOP") and -2 or (spot:find("BOTTOM") and (2 + (lift or 0)) or 0)
         frame:SetPoint(spot, health, spot, x, y)
     end
 end
@@ -658,14 +659,13 @@ local function DispelGroup(d, button, S)
     local row = NewContainer(button)
     row:SetPoint("CENTER", d.health, "CENTER")
     row:SetFrameLevel(level)
+    row:SetAlpha(0) -- hidden until it is known that there is more than one
     row:AddAuraGroup("dispel", "HARMFUL", {
         maxFrameCount = 4,
         candidateFilters = Filter(),
         initializeFrame = function(b)
             Dress(b, small, many)
             rowButtons[#rowButtons + 1] = b
-            -- hidden until it is known that there is more than one
-            for _, region in ipairs(many) do region:SetAlpha(0) end
             b:HookScript("OnShow", function() if Choose then Choose() end end)
             b:HookScript("OnHide", function() if Choose then Choose() end end)
         end,
@@ -679,17 +679,21 @@ local function DispelGroup(d, button, S)
             local ok, shown = pcall(second.IsShown, second)
             if ok then more = shown end
         end
+        -- The switch is made on the two containers as a whole. (Doing it on the
+        -- individual pictures did not hold: the game sets a picture's own
+        -- visibility itself whenever it fills it in, so both showed at once.)
         if ns.IsSecret(more) then
-            -- cannot be looked at: hand it to each picture as its visibility
-            for _, region in ipairs(single) do
-                if region.SetAlphaFromBoolean then region:SetAlphaFromBoolean(more, 0, 1) else region:SetAlpha(0) end
-            end
-            for _, region in ipairs(many) do
-                if region.SetAlphaFromBoolean then region:SetAlphaFromBoolean(more, 1, 0) else region:SetAlpha(1) end
+            -- cannot be looked at: hand it over as the visibility
+            if alone.SetAlphaFromBoolean then
+                alone:SetAlphaFromBoolean(more, 0, 1)
+                row:SetAlphaFromBoolean(more, 1, 0)
+            else
+                alone:SetAlpha(0)
+                row:SetAlpha(1)
             end
         else
-            for _, region in ipairs(single) do region:SetAlpha(more and 0 or 1) end
-            for _, region in ipairs(many) do region:SetAlpha(more and 1 or 0) end
+            alone:SetAlpha(more and 0 or 1)
+            row:SetAlpha(more and 1 or 0)
         end
     end
     local SafeApply = ns.Safe("dispellable debuffs", Apply)
@@ -715,6 +719,8 @@ local function CellContainers(d, button, cfg)
     local S = cfg.S
     local list = {}
     local level = d.health:GetFrameLevel() + 8 -- above the "you can remove this" colour
+    -- the power bar takes the bottom 4 pixels of the cell: icons along the bottom sit above it
+    local lift = (S.power == "mana" or S.power == "all") and 4 or 0
 
     -- the colour over the whole cell while there is something you can remove
     if S.dispelTint ~= false then
@@ -730,7 +736,7 @@ local function CellContainers(d, button, cfg)
     if (S.debuffCount or 0) > 0 then
         local size = S.debuffSize or 14
         local others = NewContainer(button)
-        PlaceAt(others, button, d.health, S.debuffSpot)
+        PlaceAt(others, button, d.health, S.debuffSpot, lift)
         others:SetFrameLevel(level)
         local candidates = { excludeSpellIDs = IGNORE_ID }
         if next(MINE) then candidates.excludeDispelTypes = MINE end -- those are in the middle
@@ -753,7 +759,7 @@ local function CellContainers(d, button, cfg)
         -- timer at all. 0 switches the limit off.
         if (S.buffMaxSeconds or 0) > 0 then mineFilter.maxDuration = S.buffMaxSeconds end
         local mine = NewContainer(button)
-        PlaceAt(mine, button, d.health, S.buffSpot)
+        PlaceAt(mine, button, d.health, S.buffSpot, lift)
         mine:SetFrameLevel(level)
         mine:AddAuraGroup("mine", "HELPFUL|PLAYER", {
             maxFrameCount = S.buffCount,
@@ -780,7 +786,7 @@ local function CellContainers(d, button, cfg)
                 if cfg.row then
                     slot:SetPoint("RIGHT", d.status, "LEFT", -8, 0)
                 else
-                    slot:SetPoint("BOTTOMRIGHT", d.health, "BOTTOMRIGHT", -2, 2)
+                    slot:SetPoint("BOTTOMRIGHT", d.health, "BOTTOMRIGHT", -2, 2 + lift)
                 end
                 slot:SetFrameLevel(d.health:GetFrameLevel() + 4)
                 DressButton(slot, size, true)

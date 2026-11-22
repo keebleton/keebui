@@ -1,4 +1,10 @@
-# KeebUI 0.9.2
+# KeebUI 0.9.3
+
+- **Raid and party frames: removable debuffs no longer overlap.** With two or more debuffs you can remove, the large icon was still drawn behind the row of small ones. Now it is one or the other: a single debuff is drawn large, several are drawn small side by side.
+- **Icons along the bottom of a frame sit above the mana bar** instead of on top of it, on frames that show one.
+- **The raid tools bar hides in battlegrounds and arenas,** where it overlapped the score at the top of the screen. The mark ring keybind still works there.
+
+New in 0.9.2:
 
 - **Raid and party frames: fixed an error in combat.** 0.9.1 printed a "dispellable debuffs" error in chat during fights. That is gone.
 - **A single removable debuff is now drawn large.** When a member has just one debuff you can remove, its icon is full size in the middle of their frame. With two or more, each is shown at half size side by side, as before.

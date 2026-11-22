@@ -183,7 +183,24 @@ local function InitBar()
     -- a secure frame, so the game can show and hide it (in a group / not) even in combat
     local bar = CreateFrame("Frame", "KeebUIRaidTools", anchor, "SecureHandlerStateTemplate")
     bar:SetAllPoints(anchor)
-    RegisterStateDriver(bar, "visibility", "[group] show; hide")
+    -- Shown while you are in a group, except in battlegrounds and arenas:
+    -- the score display sits at the top of the screen there, and ready checks
+    -- and pull timers have no use. The rule can only be changed out of
+    -- combat, so a change that comes up mid-fight waits for the fight to end.
+    local rule
+    local function SetRule()
+        local inInstance, kind = IsInInstance()
+        local want = (inInstance and (kind == "pvp" or kind == "arena")) and "hide" or "[group] show; hide"
+        if want == rule or InCombatLockdown() then return end
+        rule = want
+        RegisterStateDriver(bar, "visibility", want)
+    end
+    SetRule()
+    local zone = CreateFrame("Frame")
+    zone:RegisterEvent("PLAYER_ENTERING_WORLD")
+    zone:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    zone:RegisterEvent("PLAYER_REGEN_ENABLED")
+    zone:SetScript("OnEvent", ns.Safe("raid tools bar", SetRule))
 
     local x = 0
     local function Slot(w)

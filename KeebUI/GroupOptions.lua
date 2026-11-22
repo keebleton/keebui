@@ -119,14 +119,14 @@ local function Holder(c, n)
 end
 
 -- A row of `count` pictures of `size` at `spot`; returns how many icons it used.
-local function IconRow(c, used, holderIndex, textures, count, size, spot, stack)
+local function IconRow(c, used, holderIndex, textures, count, size, spot, stack, lift)
     if count <= 0 then return used end
     local holder = Holder(c, holderIndex)
     holder:SetSize(count * size + (count - 1) * 2, size)
     if spot == "CENTER" then
         holder:SetPoint("CENTER")
     else
-        ns.GroupPlaceAt(holder, c, c, spot)
+        ns.GroupPlaceAt(holder, c, c, spot, lift)
     end
     holder:Show()
     for i = 1, count do
@@ -285,10 +285,11 @@ local function DrawCell(c, set, row, width, height, textSize, data)
         used = IconRow(c, used, 1, DISPEL_ICONS, dispel, size, "CENTER", set.stacks ~= false and data.stack or nil)
     end
     local debuffs = math.min(data.debuffs or 0, set.debuffCount or 0)
+    local lift = (set.power == "mana" or set.power == "all") and 4 or 0 -- clear of the power bar, as on the real frames
     used = IconRow(c, used, 2, DEBUFF_ICONS, debuffs, set.debuffSize or 14, set.debuffSpot,
-        (dispel == 0 and set.stacks ~= false) and data.stack or nil)
+        (dispel == 0 and set.stacks ~= false) and data.stack or nil, lift)
     local buffs = math.min(data.buffs or 0, set.buffCount or 0)
-    IconRow(c, used, 3, BUFF_ICONS, buffs, set.buffSize or 12, set.buffSpot, nil)
+    IconRow(c, used, 3, BUFF_ICONS, buffs, set.buffSize or 12, set.buffSpot, nil, lift)
 end
 
 local function DrawPreview()
