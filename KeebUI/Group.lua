@@ -80,6 +80,59 @@ function ns.FrameSettings(kind)
     return setmetatable(store[kind], { __index = DEFAULTS[kind] })
 end
 
+---------------------------------------------------------------------------
+-- Debuff lists (shared by party and raid frames, and by every character):
+--   first : debuffs to show ahead of the rest
+--   hide  : debuffs never to show
+-- Each entry is { name = "Polymorph", ids = { 118, 12824, ... } }: the game
+-- filters by spell number, and a spell has one number per rank or variant.
+-- ccFirst puts whatever the game itself classes as crowd control at the front.
+---------------------------------------------------------------------------
+function ns.DebuffLists()
+    local db = ns.db
+    db.debuffLists = type(db.debuffLists) == "table" and db.debuffLists or {}
+    local lists = db.debuffLists
+    lists.first = type(lists.first) == "table" and lists.first or {}
+    lists.hide = type(lists.hide) == "table" and lists.hide or {}
+    if lists.ccFirst == nil then lists.ccFirst = true end
+    return lists
+end
+
+-- Every spell number that goes by this name (or the one number typed in).
+-- There is no name-to-number lookup in the game, so every number is tried in
+-- turn, a slice per frame to keep the game smooth; `done(ids, name)` is called
+-- at the end, with an empty list if nothing matched.
+function ns.FindSpellIDs(text, done)
+    local GetName = (C_Spell and C_Spell.GetSpellName) or function(id) return (GetSpellInfo(id)) end
+    text = (text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local number = tonumber(text)
+    if number then
+        local name = GetName(number)
+        done(name and { number } or {}, name or text)
+        return
+    end
+    local want, length = text:lower(), #text
+    local found, proper = {}, nil
+    local at, LAST, SLICE = 1, 1500000, 40000
+    local function Step()
+        local stop = math.min(at + SLICE - 1, LAST)
+        for id = at, stop do
+            local name = GetName(id)
+            if name and #name == length and name:lower() == want then
+                found[#found + 1] = id
+                proper = proper or name
+            end
+        end
+        at = stop + 1
+        if at > LAST or #found >= 300 then
+            done(found, proper or text)
+        else
+            C_Timer.After(0, Step)
+        end
+    end
+    Step()
+end
+
 -- What a header and its cells are built from: the settings plus the sizes in force.
 local function Config(kind)
     local S = ns.FrameSettings(kind)
@@ -497,7 +550,27 @@ end
 -- and hides it itself. Everything a cell shows about auras goes through
 -- them; the code above remains only as a fallback where they are missing.
 ---------------------------------------------------------------------------
+-- Your lists turned into what the containers filter by. Built once, the first
+-- time a container is made (they are all made at login): "never show" spells
+-- join the built-in ignore list, so every display leaves them out.
+local firstIDs, ccFirst, rulesReady = {}, true, false
+local function DebuffRules()
+    if rulesReady then return end
+    rulesReady = true
+    local lists = ns.DebuffLists()
+    ccFirst = lists.ccFirst ~= false
+    for _, entry in ipairs(lists.hide) do
+        for _, id in ipairs(entry.ids or {}) do IGNORE_ID[id] = true end
+    end
+    for _, entry in ipairs(lists.first) do
+        for _, id in ipairs(entry.ids or {}) do
+            if not IGNORE_ID[id] then firstIDs[id] = true end
+        end
+    end
+end
+
 local function NewContainer(parent)
+    DebuffRules()
     if C_AddOns and C_AddOns.LoadAddOn and not C_AddOns.IsAddOnLoaded("Blizzard_AuraContainer") then
         C_AddOns.LoadAddOn("Blizzard_AuraContainer")
     end
@@ -655,21 +728,64 @@ local function DispelGroup(d, button, S)
         end,
     })
 
-    -- the row of half-size icons
+    -- The row of half-size icons, in order: crowd control, then your "show
+    -- first" list, then the rest. (Groups in one container are laid out one
+    -- after another, in the order they are added.)
     local row = NewContainer(button)
     row:SetPoint("CENTER", d.health, "CENTER")
     row:SetFrameLevel(level)
     row:SetAlpha(0) -- hidden until it is known that there is more than one
-    row:AddAuraGroup("dispel", "HARMFUL", {
-        maxFrameCount = 4,
+    local function RowGroup(key, filter, candidates, most)
+        row:AddAuraGroup(key, filter, {
+            maxFrameCount = most,
+            candidateFilters = candidates,
+            initializeFrame = function(b)
+                Dress(b, small, many)
+                b:HookScript("OnShow", function() if Choose then Choose() end end)
+                b:HookScript("OnHide", function() if Choose then Choose() end end)
+            end,
+            layout = { elementWidth = small, elementHeight = small, elementSpacing = 2, lineSpacing = 2 },
+        })
+    end
+    local rest = ccFirst and "HARMFUL|!CROWD_CONTROL" or "HARMFUL"
+    local hasFirst = next(firstIDs) ~= nil
+    if ccFirst then RowGroup("dispelCC", "HARMFUL|CROWD_CONTROL", Filter(), 2) end
+    if hasFirst then
+        local candidates = Filter()
+        candidates.includeSpellIDs = firstIDs
+        RowGroup("dispelFirst", rest, candidates, 2)
+    end
+    do
+        local candidates = Filter()
+        if hasFirst then
+            local skip = {}
+            for id in pairs(IGNORE_ID) do skip[id] = true end
+            for id in pairs(firstIDs) do skip[id] = true end
+            candidates.excludeSpellIDs = skip
+        end
+        RowGroup("dispel", rest, candidates, (ccFirst or hasFirst) and 3 or 4)
+    end
+
+    -- A counter nobody sees: up to two invisible buttons for "any removable
+    -- debuff". Whether the second of them is showing is the "more than one?"
+    -- answer, whichever of the groups above the debuffs fall into.
+    local counter = NewContainer(button)
+    counter:SetPoint("CENTER", d.health, "CENTER")
+    counter:SetAlpha(0)
+    counter:AddAuraGroup("dispelCount", "HARMFUL", {
+        maxFrameCount = 2,
         candidateFilters = Filter(),
         initializeFrame = function(b)
-            Dress(b, small, many)
+            b:SetSize(1, 1)
+            local icon = b:CreateTexture(nil, "ARTWORK")
+            icon:SetAlpha(0)
+            b:SetIcon(icon)
+            if b.EnableMouse then pcall(b.EnableMouse, b, false) end
             rowButtons[#rowButtons + 1] = b
             b:HookScript("OnShow", function() if Choose then Choose() end end)
             b:HookScript("OnHide", function() if Choose then Choose() end end)
         end,
-        layout = { elementWidth = small, elementHeight = small, elementSpacing = 2, lineSpacing = 2 },
+        layout = { elementWidth = 1, elementHeight = 1, elementSpacing = 0, lineSpacing = 0 },
     })
 
     local function Apply()
@@ -711,7 +827,7 @@ local function DispelGroup(d, button, S)
     C_Timer.NewTicker(0.5, function()
         if button:IsVisible() then SafeApply() end
     end)
-    return alone, row
+    return alone, row, counter
 end
 
 -- All of a group cell's aura displays.
@@ -728,9 +844,10 @@ local function CellContainers(d, button, cfg)
         if tint then list[#list + 1] = tint end
     end
     -- the removable debuffs themselves, in the middle
-    local alone, row = DispelGroup(d, button, S)
+    local alone, row, counter = DispelGroup(d, button, S)
     if alone then list[#list + 1] = alone end
     if row then list[#list + 1] = row end
+    if counter then list[#list + 1] = counter end
 
     -- every other debuff
     if (S.debuffCount or 0) > 0 then
@@ -738,14 +855,33 @@ local function CellContainers(d, button, cfg)
         local others = NewContainer(button)
         PlaceAt(others, button, d.health, S.debuffSpot, lift)
         others:SetFrameLevel(level)
-        local candidates = { excludeSpellIDs = IGNORE_ID }
-        if next(MINE) then candidates.excludeDispelTypes = MINE end -- those are in the middle
-        others:AddAuraGroup("others", "HARMFUL", {
-            maxFrameCount = S.debuffCount,
-            candidateFilters = candidates,
-            initializeFrame = function(b) DressButton(b, size, true, S.stacks ~= false) end,
-            layout = { elementWidth = size, elementHeight = size, elementSpacing = 2, lineSpacing = 2 },
-        })
+        -- In order: crowd control, then your "show first" list, then everything
+        -- else. Debuffs you can remove are left out of all three: those are in
+        -- the middle of the cell.
+        local function Group(key, filter, candidates, most)
+            if next(MINE) then candidates.excludeDispelTypes = MINE end
+            others:AddAuraGroup(key, filter, {
+                maxFrameCount = most,
+                candidateFilters = candidates,
+                initializeFrame = function(b) DressButton(b, size, true, S.stacks ~= false) end,
+                layout = { elementWidth = size, elementHeight = size, elementSpacing = 2, lineSpacing = 2 },
+            })
+        end
+        local rest = ccFirst and "HARMFUL|!CROWD_CONTROL" or "HARMFUL"
+        local hasFirst = next(firstIDs) ~= nil
+        if ccFirst then
+            Group("cc", "HARMFUL|CROWD_CONTROL", { excludeSpellIDs = IGNORE_ID }, math.min(2, S.debuffCount))
+        end
+        if hasFirst then
+            Group("first", rest, { includeSpellIDs = firstIDs }, math.min(2, S.debuffCount))
+        end
+        local skip = IGNORE_ID
+        if hasFirst then
+            skip = {}
+            for id in pairs(IGNORE_ID) do skip[id] = true end
+            for id in pairs(firstIDs) do skip[id] = true end
+        end
+        Group("others", rest, { excludeSpellIDs = skip }, S.debuffCount)
         list[#list + 1] = others
     end
 

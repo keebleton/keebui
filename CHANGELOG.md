@@ -1,4 +1,13 @@
-# KeebUI 0.9.3
+# KeebUI 0.9.4
+
+- **Raid and party frames: crowd control first.** Polymorph, fears, stuns and other crowd control now lead the debuff row on every frame, so a pile of minor debuffs can't hide them. You can turn this off.
+- **Debuff lists.** A new Debuffs tab in `/keebui frames`:
+  - **Show first:** spells that always come right after crowd control.
+  - **Never show:** spells hidden on every frame.
+  - Type a spell's name and press Add. Every rank of it is included. The lists are shared by party and raid frames and all your characters.
+- **The raid and party frame settings are easier to find.** The Customise button is now gold and sits at the top of the Frames page.
+
+New in 0.9.3:
 
 - **Raid and party frames: removable debuffs no longer overlap.** With two or more debuffs you can remove, the large icon was still drawn behind the row of small ones. Now it is one or the other: a single debuff is drawn large, several are drawn small side by side.
 - **Icons along the bottom of a frame sit above the mana bar** instead of on top of it, on frames that show one.

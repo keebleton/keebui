@@ -692,7 +692,7 @@ local function Create()
 
     -- tabs
     local tabPick = Pick(f, { { "Layout", "Layout" }, { "Cell", "Cell" }, { "Auras", "Auras" }, { "Health", "Health" },
-        { "Clicks", "Clicks" } },
+        { "Debuffs", "Debuffs" }, { "Clicks", "Clicks" } },
         function() return tab end,
         function(v)
             tab = v
@@ -735,7 +735,13 @@ local function Create()
     local defaults = TextButton(f, 84, "Defaults")
     defaults:SetPoint("BOTTOMRIGHT", -PAD, 42)
     defaults:SetScript("OnClick", function()
-        if tab == "Clicks" then
+        if tab == "Debuffs" then
+            -- crowd control first, both lists empty
+            local lists = ns.DebuffLists()
+            lists.ccFirst = true
+            wipe(lists.first)
+            wipe(lists.hide)
+        elseif tab == "Clicks" then
             -- left click targets, right click opens the menu, nothing else bound
             local casts = ns.ClickCasts()
             wipe(casts)
@@ -864,7 +870,146 @@ local function Create()
         return p
     end
 
+    -- Debuffs: crowd control first, a "show first" list and a "never show"
+    -- list. One set serves party and raid frames, and every character.
+    local function DebuffPage()
+        local MAX, LINE = 10, 21
+        local p = CreateFrame("Frame", nil, f)
+        p:SetPoint("TOPLEFT", PAD, -116)
+        p:SetPoint("BOTTOMRIGHT", -PAD, 86)
+        p.controls = {}
+        local lists = ns.DebuffLists()
+
+        local ccLabel = ns.Text(p, 14, "LEFT")
+        ccLabel:SetPoint("TOPLEFT", 0, -3)
+        ccLabel:SetText("Crowd control first")
+        local ccNote = ns.Text(p, 12, "LEFT")
+        ccNote:SetPoint("TOPLEFT", 0, -20)
+        ccNote:SetTextColor(0.55, 0.58, 0.55)
+        ccNote:SetText("Polymorph, fear, stuns and the like lead the row, ahead of everything else")
+        local cc = Switch(p, function() return lists.ccFirst ~= false end, function(on)
+            lists.ccFirst = on and true or false
+            dirty = true
+            Refresh()
+        end)
+        cc:SetPoint("RIGHT", p, "TOPRIGHT", 0, -17)
+        p.controls[#p.controls + 1] = cc
+
+        local function Column(x, width, title, note, entries)
+            local head = ns.Text(p, 14, "LEFT")
+            head:SetPoint("TOPLEFT", x, -52)
+            head:SetText(title)
+            local sub = ns.Text(p, 12, "LEFT")
+            sub:SetPoint("TOPLEFT", x, -69)
+            sub:SetWidth(width)
+            sub:SetTextColor(0.55, 0.58, 0.55)
+            sub:SetText(note)
+
+            local box = CreateFrame("EditBox", nil, p)
+            box:SetSize(width - 58, 21)
+            box:SetPoint("TOPLEFT", x, -90)
+            box:SetAutoFocus(false)
+            box:SetFont(ns.FONT, 13, "OUTLINE")
+            box:SetTextInsets(6, 6, 0, 0)
+            box:SetMaxLetters(60)
+            local boxEdge = Flat(box, 0, 0, 0, 1, "BACKGROUND")
+            boxEdge:SetPoint("TOPLEFT", -1, 1)
+            boxEdge:SetPoint("BOTTOMRIGHT", 1, -1)
+            local boxFill = Flat(box, 0.13, 0.15, 0.13, 1, "BORDER")
+            boxFill:SetAllPoints()
+            local add = TextButton(p, 50, "Add")
+            add:SetPoint("LEFT", box, "RIGHT", 8, 0)
+            local status = ns.Text(p, 12, "LEFT")
+            status:SetPoint("TOPLEFT", x, -116)
+            status:SetWidth(width)
+            status:SetTextColor(0.6, 0.63, 0.6)
+            status:SetText("Type a spell name (or number), then Add")
+
+            local rows = {}
+            local column = {}
+            function column:Paint()
+                for n = 1, MAX do
+                    local row = rows[n]
+                    local entry = entries[n]
+                    if entry and not row then
+                        row = CreateFrame("Frame", nil, p)
+                        row:SetSize(width, LINE - 2)
+                        row:SetPoint("TOPLEFT", x, -136 - (n - 1) * LINE)
+                        local back = Flat(row, 1, 1, 1, 0.04, "BACKGROUND")
+                        back:SetAllPoints()
+                        row.label = ns.Text(row, 13, "LEFT")
+                        row.label:SetPoint("LEFT", 6, 0)
+                        row.label:SetPoint("RIGHT", -28, 0)
+                        row.remove = TextButton(row, 20, "x")
+                        row.remove:SetHeight(LINE - 4)
+                        row.remove:SetPoint("RIGHT", -1, 0)
+                        row.remove:SetScript("OnClick", function()
+                            table.remove(entries, n)
+                            dirty = true
+                            Refresh()
+                        end)
+                        rows[n] = row
+                    end
+                    if row then
+                        if entry then
+                            row.label:SetText(entry.name or "?")
+                            row:Show()
+                        else
+                            row:Hide()
+                        end
+                    end
+                end
+            end
+
+            local busy = false
+            local function Add()
+                local text = (box:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                box:ClearFocus()
+                if text == "" or busy then return end
+                if #entries >= MAX then
+                    status:SetText("The list is full (" .. MAX .. "). Remove one first.")
+                    return
+                end
+                for _, entry in ipairs(entries) do
+                    if (entry.name or ""):lower() == text:lower() then
+                        status:SetText("Already on the list.")
+                        return
+                    end
+                end
+                busy = true
+                status:SetText("Looking up \"" .. text .. "\"...")
+                ns.FindSpellIDs(text, function(ids, name)
+                    busy = false
+                    if #ids == 0 then
+                        status:SetText("No spell called \"" .. text .. "\". Check the spelling.")
+                        return
+                    end
+                    entries[#entries + 1] = { name = name, ids = ids }
+                    box:SetText("")
+                    status:SetText("Added " .. name .. (#ids > 1 and (" (" .. #ids .. " versions)") or ""))
+                    dirty = true
+                    Refresh()
+                end)
+            end
+            add:SetScript("OnClick", Add)
+            box:SetScript("OnEnterPressed", Add)
+            box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+            p:HookScript("OnHide", function() box:ClearFocus() end)
+            p.controls[#p.controls + 1] = column
+        end
+
+        local width = (WIDTH - 2 * PAD - 20) / 2
+        Column(0, width, "Show first", "After crowd control, ahead of the rest", lists.first)
+        Column(width + 20, width, "Never show", "Hidden on every frame", lists.hide)
+        p.height = 136 + MAX * LINE + 6
+        return p
+    end
+
     local function Page(forKind, forTab)
+        if forTab == "Debuffs" then
+            pages.Debuffs = pages.Debuffs or DebuffPage()
+            return pages.Debuffs
+        end
         if forTab == "Clicks" then
             pages.Clicks = pages.Clicks or ClickPage()
             return pages.Clicks
@@ -917,8 +1062,8 @@ local function Create()
 
     Refresh = function()
         for _, painter in ipairs(painters) do painter:Paint() end
-        sizePick:SetShown(kind == "raid" and tab ~= "Clicks")
-        sizeLabel:SetShown(kind == "raid" and tab ~= "Clicks")
+        sizePick:SetShown(kind == "raid" and tab ~= "Clicks" and tab ~= "Debuffs")
+        sizeLabel:SetShown(kind == "raid" and tab ~= "Clicks" and tab ~= "Debuffs")
         local p = Page(kind, tab)
         for _, other in pairs(pages) do
             if other ~= p then other:Hide() end

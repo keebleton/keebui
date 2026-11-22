@@ -39,6 +39,9 @@ local function Pages()
                 text = "Restore", click = function() ns.RestoreOldUI() end },
         } },
         { name = "Frames", about = "Player, target, party and raid.", rows = {
+            { kind = "button", label = "Raid and party frames", note = "Layout, auras and click casting",
+                text = "Customise  >", primary = true,
+                click = function() if ns.ToggleFrameOptions then ns.ToggleFrameOptions() end end },
             { kind = "pick", label = "Unit frames", note = "Player, target, target of target, pet", reload = true,
                 get = function() return ns.db.unitFrames and "keebui" or "blizzard" end,
                 set = function(v) ns.db.unitFrames = (v == "keebui") end,
@@ -47,8 +50,6 @@ local function Pages()
                 key = "blizzClassColor", reload = true },
             { kind = "toggle", label = "Party frames", note = "Column above your frame", key = "party", reload = true },
             { kind = "toggle", label = "Raid frames", note = "Grid of groups", key = "raid", reload = true },
-            { kind = "button", label = "Raid and party frames", note = "Layout, auras and click casting",
-                text = "Customise", click = function() if ns.ToggleFrameOptions then ns.ToggleFrameOptions() end end },
             { kind = "pick", label = "Raid cell size", note = "Auto picks by how many are in the raid",
                 get = function() return ns.db.raidPreset or "auto" end,
                 set = function(v)
@@ -530,8 +531,17 @@ local function Create()
             elseif row.kind == "slider" then
                 control = Slider(p, row)
             elseif row.kind == "button" then
-                control = TextButton(p, 96)
+                control = TextButton(p, row.primary and 130 or 96)
                 local text = row.text
+                if row.primary then
+                    -- the main way into a bigger settings window: gold, like a lit
+                    -- choice, so it reads as a door rather than one more switch
+                    -- (dark text on gold: no outline or shadow, or it smears)
+                    control.fill:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+                    control.label:SetFont(ns.FONT, 14, "")
+                    control.label:SetTextColor(0.08, 0.09, 0.08)
+                    control.label:SetShadowColor(0, 0, 0, 0)
+                end
                 function control:Paint()
                     self.label:SetText(type(text) == "function" and text() or text)
                 end
