@@ -1,7 +1,10 @@
 -- KeebUI quest list: a plain, scrollable replacement for the built-in quest
 -- tracker. No header bar, no background; about half the height the built-in
--- one takes. Mouse wheel scrolls. Click a quest to open it, shift-click to
--- stop tracking it.
+-- one takes. Mouse wheel scrolls.
+--   click          open the quest
+--   shift-click    put a link to it in chat
+--   ctrl-click     stop tracking it
+--   right-click    menu: open, track / stop tracking, share, link, abandon
 
 local ADDON, ns = ...
 
@@ -74,13 +77,108 @@ local function Init()
         return fs, height
     end
 
-    local function OnClick(self)
+    -----------------------------------------------------------------------
+    -- What can be done to a quest. Each uses the game's own way of doing it
+    -- where it has one, so sharing and abandoning behave exactly as they do
+    -- from the quest log (abandoning still asks "are you sure?").
+    -----------------------------------------------------------------------
+    local function Open(id)
+        if InCombatLockdown() then return end
+        if QuestMapFrame_OpenToQuestDetails then pcall(QuestMapFrame_OpenToQuestDetails, id) end
+    end
+
+    local function IsTracked(id)
+        if Q.GetQuestWatchType then
+            local ok, kind = pcall(Q.GetQuestWatchType, id)
+            if ok then return kind ~= nil end
+        end
+        if Q.IsQuestWatched then
+            local ok, on = pcall(Q.IsQuestWatched, id)
+            if ok then return on and true or false end
+        end
+        return false
+    end
+
+    local function Untrack(id)
+        if Q.RemoveQuestWatch then pcall(Q.RemoveQuestWatch, id) end
+    end
+
+    local function Track(id)
+        if Q.AddQuestWatch then pcall(Q.AddQuestWatch, id) end
+    end
+
+    local function Link(id)
+        local link = GetQuestLink and GetQuestLink(id)
+        if not link then return end
+        -- into the chat line being typed, or a new one if none is open
+        local insert = (ChatFrameUtil and ChatFrameUtil.InsertLink) or ChatEdit_InsertLink
+        local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
+        local ok, added = false, false
+        if insert then ok, added = pcall(insert, link) end
+        if not (ok and added) and open then pcall(open, link) end
+    end
+
+    local function CanShare(id)
+        if not IsInGroup() then return false end
+        if Q.IsPushableQuest then
+            local ok, can = pcall(Q.IsPushableQuest, id)
+            if ok then return can and true or false end
+        end
+        return true
+    end
+
+    local function Share(id)
+        if QuestMapQuestOptions_ShareQuest then
+            pcall(QuestMapQuestOptions_ShareQuest, id)
+        elseif Q.SetSelectedQuest and QuestLogPushQuest then
+            Q.SetSelectedQuest(id)
+            pcall(QuestLogPushQuest)
+        end
+    end
+
+    local function Abandon(id)
+        if QuestMapQuestOptions_AbandonQuest then
+            pcall(QuestMapQuestOptions_AbandonQuest, id)
+        elseif Q.SetSelectedQuest and Q.SetAbandonQuest then
+            Q.SetSelectedQuest(id)
+            Q.SetAbandonQuest()
+            local index = Q.GetLogIndexForQuestID(id)
+            local info = index and Q.GetInfo(index)
+            StaticPopup_Show("ABANDON_QUEST", info and info.title or "")
+        end
+    end
+
+    local function Menu(owner, id)
+        if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+        local index = Q.GetLogIndexForQuestID(id)
+        local info = index and Q.GetInfo(index)
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            root:CreateTitle(info and info.title or "Quest")
+            root:CreateButton("Open", function() Open(id) end)
+            if IsTracked(id) then
+                root:CreateButton("Stop tracking", function() Untrack(id) end)
+            else
+                root:CreateButton("Track", function() Track(id) end)
+            end
+            local share = root:CreateButton("Share with group", function() Share(id) end)
+            if not CanShare(id) then share:SetEnabled(false) end
+            root:CreateButton("Link in chat", function() Link(id) end)
+            root:CreateDivider()
+            root:CreateButton("|cffff6666Abandon|r", function() Abandon(id) end)
+        end)
+    end
+
+    local function OnClick(self, mouse)
         local id = self.questID
         if not id then return end
-        if IsShiftKeyDown() then
-            if Q.RemoveQuestWatch then pcall(Q.RemoveQuestWatch, id) end
-        elseif not InCombatLockdown() and QuestMapFrame_OpenToQuestDetails then
-            pcall(QuestMapFrame_OpenToQuestDetails, id)
+        if mouse == "RightButton" then
+            Menu(self, id)
+        elseif IsShiftKeyDown() then
+            Link(id)
+        elseif IsControlKeyDown() then
+            Untrack(id)
+        else
+            Open(id)
         end
     end
 
@@ -89,7 +187,8 @@ local function Init()
         local b = buttons[usedButtons]
         if not b then
             b = CreateFrame("Button", nil, child)
-            b:SetScript("OnClick", OnClick)
+            b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            b:SetScript("OnClick", ns.Safe("quest list click", OnClick))
             b:SetScript("OnEnter", function(self) if self.title then self.title:SetAlpha(0.7) end end)
             b:SetScript("OnLeave", function(self) if self.title then self.title:SetAlpha(1) end end)
             buttons[usedButtons] = b

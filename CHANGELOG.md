@@ -1,4 +1,10 @@
-# KeebUI 0.9.4
+# KeebUI 0.9.5
+
+- **Quest list: right-click menu.** Right-click a quest to open it, track or stop tracking it, share it with your group, link it in chat, or abandon it (with the usual "are you sure?").
+- **Quest list: shift-click** a quest to link it in chat.
+- **Quest list: ctrl-click** a quest to stop tracking it. (This used to be shift-click.)
+
+New in 0.9.4:
 
 - **Raid and party frames: crowd control first.** Polymorph, fears, stuns and other crowd control now lead the debuff row on every frame, so a pile of minor debuffs can't hide them. You can turn this off.
 - **Debuff lists.** A new Debuffs tab in `/keebui frames`:
