@@ -8,7 +8,7 @@ local ADDON, ns = ...
 
 local NAME = "KeebUI"
 local OLD_NAME = "CleanUI" -- what this addon and its layout were called before the rename
-local VERSION = 15
+local VERSION = 16
 local BUTTON, PADDING = 45, 3      -- stock button size at 100% and the gap between buttons
 -- The three stacked bars run at 90%: a button then covers about 61 screen
 -- pixels, almost exactly the 59 pixels of icon art shown, so icons are drawn
@@ -50,7 +50,16 @@ local function Set(entry, setting, value)
     entry.settings[#entry.settings + 1] = { setting = setting, value = value }
 end
 
+-- The armour durability figure: normally under the minimap, where the
+-- right-hand bars are, so it was hidden behind them. Left of the minimap instead.
+local function ArrangeDurability(layout)
+    local system = Enum.EditModeSystem
+    local entry = system.DurabilityFrame and FindSystem(layout, system.DurabilityFrame, nil)
+    if entry then Anchor(entry, "TOPRIGHT", -250, -200) end
+end
+
 local function Arrange(layout)
+    ArrangeDurability(layout)
     local system = Enum.EditModeSystem
     local index = Enum.EditModeActionBarSystemIndices or {}
     local setting = Enum.EditModeActionBarSetting or {}
@@ -192,11 +201,16 @@ local function Write(force)
         if layout.layoutType == Enum.EditModeLayoutType.Account then accountLayouts = accountLayouts + 1 end
     end
 
+    -- Coming from version 15, only the durability figure is new: move just that,
+    -- and leave everything you have since placed, and your active layout, alone.
+    local small = ns.db.layoutVersion == 15
+    if small and not slot then return true end
+
     if slot then
         if not force then
             return true -- already made once; where you go from there is your choice
         end
-        Arrange(merged[slot])
+        if small then ArrangeDurability(merged[slot]) else Arrange(merged[slot]) end
     else
         local limit = Constants and Constants.EditModeConstants and Constants.EditModeConstants.EditModeMaxLayoutsPerType
         if limit and accountLayouts >= limit then
@@ -219,6 +233,7 @@ local function Write(force)
     end
 
     info.layouts = merged
+    if small then slot = active end
     info.activeLayout = slot
     C_EditMode.SaveLayouts(info)
     C_EditMode.SetActiveLayout(slot)
@@ -230,8 +245,11 @@ local function Attempt(force, triesLeft)
     if not ok then
         ns.LogError("bar layout", done)
     elseif done then
+        local small = ns.db.layoutVersion == 15
         ns.db.layoutVersion = VERSION
-        if force then ns.Print("bars stacked. Your previous layout is still in Edit Mode's layout list.") end
+        -- nothing else was rewritten, so there are no bar positions to check
+        if small then ns.db.layoutVerified = VERSION end
+        if force and not small then ns.Print("bars stacked. Your previous layout is still in Edit Mode's layout list.") end
     elseif done == nil then
         ns.Print("couldn't arrange the bars: " .. (reason or "unknown reason") .. ".")
     elseif triesLeft > 0 then

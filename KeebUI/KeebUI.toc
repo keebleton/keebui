@@ -2,7 +2,7 @@
 ## Title: KeebUI
 ## Notes: A clean, flat interface: unit frames, customisable raid and party frames with click casting, nameplates and action bars. Keeps your keybinds. /keebui for options.
 ## Author: Keeb
-## Version: 0.9.5
+## Version: 0.9.6
 ## Category: Unit Frames
 ## X-Curse-Project-ID: 1819682
 ## SavedVariables: KeebUIDB

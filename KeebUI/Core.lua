@@ -577,6 +577,15 @@ end
 ---------------------------------------------------------------------------
 local menuCount = 0
 
+-- Lets the game's ping key work with the mouse over this unit button, as it
+-- does over Blizzard's own frames: the ping goes on whoever the button shows.
+-- (Set out of combat, when the button is made.)
+function ns.Pingable(button)
+    if not PingableType_UnitFrameMixin or InCombatLockdown() then return end
+    Mixin(button, PingableType_UnitFrameMixin)
+    button:SetAttribute("ping-receiver", true)
+end
+
 function ns.AttachMenu(button)
     menuCount = menuCount + 1
     local name = "KeebUIMenuButton" .. menuCount

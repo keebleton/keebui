@@ -1,4 +1,9 @@
-# KeebUI 0.9.5
+# KeebUI 0.9.6
+
+- **Pings work on KeebUI's frames.** Press your ping key with the mouse over a unit, party or raid frame to ping that person.
+- **Armour durability is no longer hidden behind the right-hand action bars.** It now sits to the left of the minimap. Updating from 0.9.1 or later moves only this; the rest of your layout is left alone.
+
+New in 0.9.5:
 
 - **Quest list: right-click menu.** Right-click a quest to open it, track or stop tracking it, share it with your group, link it in chat, or abandon it (with the usual "are you sure?").
 - **Quest list: shift-click** a quest to link it in chat.

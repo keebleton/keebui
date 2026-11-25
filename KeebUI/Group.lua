@@ -1098,6 +1098,7 @@ local function Style(button, cfg)
     button:SetSize(cfg.width, cfg.height)
     button:RegisterForClicks("AnyUp")
     local menuButton = ns.AttachMenu(button)
+    ns.Pingable(button)
     -- Click-casting (set up in /keebui, Frames, Click casting). Only the
     -- combinations you have bound do anything; the catch-all "any click
     -- targets / opens the menu" the cell started with is removed.
