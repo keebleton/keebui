@@ -1,4 +1,10 @@
-# KeebUI 0.9.6
+# KeebUI 0.9.7
+
+- **Questie: no more two quest lists.** If Questie's own tracker is on, KeebUI's quest list now stays out of its way. To use KeebUI's list instead, type `/keebui questie` (or use the button under Extras); the same command switches back. With KeebUI's list in use, right-click a quest for **Show on map** and, with TomTom, **Set waypoint**, both from Questie.
+- **Role icons on raid and party frames** (optional): show tank and healer icons, or everyone's, under Cell in `/keebui frames`. Off unless you turn it on.
+- **Brighter class colours on Blizzard's frames,** for anyone keeping the stock player and target frames.
+
+New in 0.9.6:
 
 - **Pings work on KeebUI's frames.** Press your ping key with the mouse over a unit, party or raid frame to ping that person.
 - **Armour durability is no longer hidden behind the right-hand action bars.** It now sits to the left of the minimap. Updating from 0.9.1 or later moves only this; the rest of your layout is left alone.

@@ -13,9 +13,71 @@ local TITLE_SIZE, LINE_SIZE = 14, 13
 local INDENT, ROW_GAP, QUEST_GAP = 10, 2, 8
 local WHEEL_STEP = 40
 
+---------------------------------------------------------------------------
+-- Questie. It has a quest tracker of its own, and with both on there were two
+-- lists, and Questie moved the tracking into its own list, which left this one
+-- showing the whole quest log. So the two take turns, decided by Questie's own
+-- "tracker enabled" setting:
+--   * Questie's tracker on  -> this list stays off and leaves the screen to it
+--   * Questie's tracker off -> this list runs, and Questie's map icons follow
+--     what is tracked here; right-click also offers Questie's "show on map"
+--     and waypoint, and the list redraws when Questie reports progress
+-- "/keebui questie" (or the button under Extras) switches between the two.
+---------------------------------------------------------------------------
+local function QuestieModule(name)
+    if not (QuestieLoader and QuestieLoader.ImportModule) then return nil end
+    local ok, module = pcall(QuestieLoader.ImportModule, QuestieLoader, name)
+    return ok and module or nil
+end
+
+function ns.QuestieLoaded()
+    return C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Questie") and Questie ~= nil
+end
+
+-- Is Questie's own tracker switched on? (nil when Questie is not there)
+function ns.QuestieTrackerOn()
+    if not ns.QuestieLoaded() then return nil end
+    local ok, on = pcall(function() return Questie.db.profile.trackerEnabled end)
+    if not ok then return nil end
+    return on ~= false
+end
+
+-- Switch which list is used. Both ways reload the interface (Questie's own
+-- switch does that itself).
+function ns.UseQuestieTracker(useQuestie)
+    if InCombatLockdown() then
+        ns.Print("can't switch quest lists in combat.")
+        return
+    end
+    local tracker = QuestieModule("QuestieTracker")
+    if not tracker then
+        ns.Print("Questie isn't running.")
+        return
+    end
+    if useQuestie then
+        ns.db.tracker = true -- stays on, steps aside while Questie's is on
+        tracker:Enable()
+    else
+        ns.db.tracker = true
+        tracker:Disable()
+    end
+end
+
 local function Init()
     local Q = C_QuestLog
     if not (Q and Q.GetInfo and Q.GetLogIndexForQuestID) then return end
+
+    if ns.QuestieTrackerOn() then
+        -- Questie's tracker is in charge; say so once per character
+        local who = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+        ns.db.questieNoted = type(ns.db.questieNoted) == "table" and ns.db.questieNoted or {}
+        if not ns.db.questieNoted[who] then
+            ns.db.questieNoted[who] = true
+            ns.Print("Questie's quest tracker is on, so KeebUI's quest list is staying out of its way. " ..
+                "To use KeebUI's list instead, type /keebui questie.")
+        end
+        return
+    end
 
     local anchor = ns.Anchor("tracker", "Quests", WIDTH, HEIGHT, 608, 577)
     local scroll = CreateFrame("ScrollFrame", "KeebUIQuests", anchor)
@@ -163,6 +225,22 @@ local function Init()
             local share = root:CreateButton("Share with group", function() Share(id) end)
             if not CanShare(id) then share:SetEnabled(false) end
             root:CreateButton("Link in chat", function() Link(id) end)
+            local utils = ns.QuestieLoaded() and QuestieModule("TrackerUtils")
+            if utils and utils.ShowQuestOnMap then
+                root:CreateButton("Show on map (Questie)", function()
+                    local ok, shown = pcall(utils.ShowQuestOnMap, id)
+                    if not (ok and shown) then ns.Print("Questie has no location for that quest.") end
+                end)
+                if utils.IsTomTomAvailable and utils.SetQuestTomTomTarget then
+                    local okTom, hasTom = pcall(utils.IsTomTomAvailable)
+                    if okTom and hasTom then
+                        root:CreateButton("Set waypoint (Questie)", function()
+                            local ok, set = pcall(utils.SetQuestTomTomTarget, id)
+                            if not (ok and set) then ns.Print("Questie has no location for that quest.") end
+                        end)
+                    end
+                end
+            end
             root:CreateDivider()
             root:CreateButton("|cffff6666Abandon|r", function() Abandon(id) end)
         end)
@@ -272,14 +350,18 @@ local function Init()
         "QUEST_TURNED_IN", "PLAYER_LEVEL_UP", "PLAYER_ENTERING_WORLD" }) do
         pcall(events.RegisterEvent, events, event)
     end
-    events:SetScript("OnEvent", function()
+    local function Soon()
         if pending then return end
         pending = true
         C_Timer.After(0.15, function()
             pending = false
             SafeRefresh()
         end)
-    end)
+    end
+    events:SetScript("OnEvent", Soon)
+    if ns.QuestieLoaded() and Questie.API and Questie.API.RegisterForQuestUpdates then
+        pcall(Questie.API.RegisterForQuestUpdates, function() Soon() end)
+    end
     SafeRefresh()
 
     -- The built-in tracker steps aside. The game puts it back whenever it

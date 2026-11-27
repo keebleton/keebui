@@ -24,7 +24,7 @@ local DEFAULTS = {
         dispelSize = 24, dispelTint = true, tintStrength = 0.5, stacks = true,
         debuffCount = 3, debuffSize = 20, debuffSpot = "OUT_RIGHT",
         buffCount = 4, buffSize = 20, buffSpot = "OUT_LEFT", buffMaxSeconds = 60,
-        barColor = "class", rangeAlpha = 0.45, heals = true, aggro = true, castStrip = true,
+        barColor = "class", rangeAlpha = 0.45, heals = true, aggro = true, castStrip = true, roleIcon = "off",
     },
     raid = {
         w10 = 122, h10 = 44, t10 = 14, w20 = 96, h20 = 38, t20 = 13, w40 = 76, h40 = 34, t40 = 12,
@@ -33,7 +33,7 @@ local DEFAULTS = {
         dispelSize = 22, dispelTint = true, tintStrength = 0.5, stacks = true,
         debuffCount = 3, debuffSize = 14, debuffSpot = "BOTTOMLEFT",
         buffCount = 3, buffSize = 12, buffSpot = "TOPRIGHT", buffMaxSeconds = 60,
-        barColor = "class", rangeAlpha = 0.45, heals = true, aggro = true, castStrip = true,
+        barColor = "class", rangeAlpha = 0.45, heals = true, aggro = true, castStrip = true, roleIcon = "off",
     },
 }
 ns.FRAME_DEFAULTS = DEFAULTS
@@ -979,9 +979,29 @@ local READY = {
     waiting = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
 
+-- The role icon: the game's own small tank / healer / damage pictures.
+local ROLE_ATLAS = { TANK = "roleicon-tiny-tank", HEALER = "roleicon-tiny-healer", DAMAGER = "roleicon-tiny-dps" }
+local function UpdateRole(d)
+    if not d.role then return end
+    local mode = d.cfg.S.roleIcon
+    local role = UnitGroupRolesAssigned and Clean(UnitGroupRolesAssigned(d.unit))
+    local show = ROLE_ATLAS[role] and (mode == "all" or (mode == "tankheal" and role ~= "DAMAGER"))
+    if show then
+        local ok = pcall(d.role.SetAtlas, d.role, ROLE_ATLAS[role])
+        if not ok and GetTexCoordsForRoleSmallCircle then
+            d.role:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
+            d.role:SetTexCoord(GetTexCoordsForRoleSmallCircle(role))
+        end
+        d.role:Show()
+    else
+        d.role:Hide()
+    end
+end
+
 local function UpdateIcons(d)
     local unit = d.unit
     d.leader:SetShown(Clean(UnitIsGroupLeader(unit)) and true or false)
+    UpdateRole(d)
 
     local index = Clean(GetRaidTargetIndex(unit))
     if index then
@@ -1196,6 +1216,16 @@ local function Style(button, cfg)
     d.leader:SetSize(16, 16)
     d.leader:SetPoint("CENTER", top, "TOPLEFT", 3, -1)
     d.leader:Hide()
+
+    -- role icon (optional): on the left edge, the name moves over to make room in party rows
+    if cfg.S.roleIcon == "all" or cfg.S.roleIcon == "tankheal" then
+        local size = cfg.row and 16 or 12
+        d.role = top:CreateTexture(nil, "OVERLAY", nil, 5)
+        d.role:SetSize(size, size)
+        d.role:SetPoint("LEFT", top, "LEFT", 3, cfg.row and 0 or 5)
+        d.role:Hide()
+        if cfg.row then d.name:SetPoint("LEFT", 5 + size + 3, 0) end
+    end
 
     d.mark = top:CreateTexture(nil, "OVERLAY", nil, 2)
     d.mark:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
@@ -1441,7 +1471,7 @@ local function Start()
     end
     for _, event in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED", "RAID_TARGET_UPDATE",
         "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED", "PARTY_LEADER_CHANGED",
-        "PLAYER_ENTERING_WORLD" }) do
+        "PLAYER_ENTERING_WORLD", "PLAYER_ROLES_ASSIGNED" }) do
         events:RegisterEvent(event)
     end
     events:SetScript("OnEvent", ns.Safe("group event", function(_, event, unit)

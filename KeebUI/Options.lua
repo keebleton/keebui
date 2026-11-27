@@ -99,6 +99,16 @@ local function Pages()
         } },
         { name = "Extras", about = "Smaller helpers and other addons.", rows = {
             { kind = "toggle", label = "Scrollable quest list", note = "Replaces the built-in tracker", key = "tracker", reload = true },
+            { kind = "button", label = "Quest list with Questie", note = "Which list to use when Questie is installed",
+                text = function()
+                    local on = ns.QuestieTrackerOn and ns.QuestieTrackerOn()
+                    if on == nil then return "No Questie" end
+                    return on and "Use KeebUI's" or "Use Questie's"
+                end,
+                click = function()
+                    local on = ns.QuestieTrackerOn and ns.QuestieTrackerOn()
+                    if on ~= nil then ns.UseQuestieTracker(not on) end
+                end },
             { kind = "toggle", label = "Raid tools", note = "Ready check, pull timer and marks bar; mark ring keybind", key = "raidTools", reload = true },
             { kind = "toggle", label = "Arcanite transmute alert", note = "Tells you when the cooldown is up", key = "transmute", reload = true },
             { kind = "button", label = "Errors", note = "Print anything that went wrong this session",
@@ -619,6 +629,13 @@ SlashCmdList.KEEBUI = function(msg)
         if ns.ToggleClickCast then ns.ToggleClickCast() end
     elseif msg == "frames" or msg == "raid" or msg == "party" then
         if ns.ToggleFrameOptions then ns.ToggleFrameOptions() end
+    elseif msg == "questie" then
+        local on = ns.QuestieTrackerOn and ns.QuestieTrackerOn()
+        if on == nil then
+            ns.Print("Questie isn't running.")
+        else
+            ns.UseQuestieTracker(not on)
+        end
     elseif msg == "debug" then
         ns.db.debug = not ns.db.debug
         ns.Print("troubleshooting notes are " .. (ns.db.debug and "kept" or "no longer kept") .. " in the settings file.")

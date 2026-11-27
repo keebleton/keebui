@@ -22,8 +22,8 @@ local function S() return ns.FrameSettings(kind) end
 ---------------------------------------------------------------------------
 local CLASS_MANA = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, SHAMAN = true, PALADIN = true, HUNTER = true }
 local FAKE = {
-    { name = "Thorgrim", class = "WARRIOR", hp = 0.55, aggro = true, debuffs = 2 },
-    { name = "Elowen", class = "PRIEST", hp = 1, buffs = 2, power = 0.7 },
+    { name = "Thorgrim", class = "WARRIOR", hp = 0.55, aggro = true, debuffs = 2, role = "TANK" },
+    { name = "Elowen", class = "PRIEST", hp = 1, buffs = 2, power = 0.7, role = "HEALER" },
     { name = "Kazrik", class = "ROGUE", hp = 0.8, dispel = 1, stack = 3 },
     { name = "Maribel", class = "MAGE", hp = 0.35, dispel = 2, cast = true, power = 0.4, heal = 0.25 },
     { name = "Brannoc", class = "DRUID", hp = 1, buffs = 1, far = true, power = 0.9 },
@@ -263,6 +263,22 @@ local function DrawCell(c, set, row, width, height, textSize, data)
     end
     for _, t in ipairs(c.rimInside) do t:SetShown(aggro and tight) end
     c.strip:SetShown(data.cast and set.castStrip ~= false and true or false)
+
+    -- role icon, as on the real cells
+    local role = data.role or "DAMAGER"
+    local showRole = set.roleIcon == "all" or (set.roleIcon == "tankheal" and role ~= "DAMAGER")
+    if not c.role then c.role = c:CreateTexture(nil, "OVERLAY", nil, 5) end
+    c.role:ClearAllPoints()
+    local roleSize = row and 16 or 12
+    c.role:SetSize(roleSize, roleSize)
+    c.role:SetPoint("LEFT", c, "LEFT", 3, row and 0 or 5)
+    if showRole then
+        pcall(c.role.SetAtlas, c.role, ({ TANK = "roleicon-tiny-tank", HEALER = "roleicon-tiny-healer", DAMAGER = "roleicon-tiny-dps" })[role])
+    end
+    c.role:SetShown(showRole and true or false)
+    if row and (set.roleIcon == "all" or set.roleIcon == "tankheal") then
+        c.name:SetPoint("LEFT", 5 + roleSize + 3, 0)
+    end
 
     -- auras
     for _, icon in ipairs(c.icons) do
@@ -590,6 +606,8 @@ local function Rows(forKind, forTab)
             { "Health text", "Missing shows how much health is gone", "pick", "healthText",
                 { { "none", "None" }, { "percent", "Percent" }, { "deficit", "Missing" }, { "current", "Current" } } },
             { "Name colour", nil, "pick", "nameColor", { { "white", "White" }, { "class", "Class" } } },
+            { "Role icon", "From each member's assigned role", "pick", "roleIcon",
+                { { "off", "Off" }, { "tankheal", "Tanks and healers" }, { "all", "Everyone" } } },
             { "Name length", "Letters shown; 0 shows the whole name", "slider", "nameLength", 0, 12, 1 },
             { "Power bar", "A thin bar along the bottom", "pick", "power",
                 { { "none", "None" }, { "mana", "Mana users" }, { "all", "Everyone" } } },

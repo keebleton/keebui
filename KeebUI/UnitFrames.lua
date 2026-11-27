@@ -683,10 +683,20 @@ local function InitBlizzard()
         if not bar or painting or not UnitExists(unit) then return end
         painting = true
         pcall(function()
-            -- newer bar art is drawn already green; grey it first so the colour shows true
-            local texture = bar:GetStatusBarTexture()
-            if texture and texture.SetDesaturated then texture:SetDesaturated(true) end
-            bar:SetStatusBarColor(ns.UnitColor(unit))
+            -- The bar art is drawn green and shaded; tinting even a greyed-out
+            -- copy of it left class colours dull. So the fill is a plain white
+            -- texture (the frame's own border and shape stay), tinted with the
+            -- full class colour.
+            if bar.keebFlat ~= true then
+                bar.keebFlat = true
+                bar:SetStatusBarTexture(ns.TEX)
+            end
+            local r, g, b, hidden = ns.ClassColorOf(unit)
+            if hidden or r then
+                bar:SetStatusBarColor(r, g, b)
+            else
+                bar:SetStatusBarColor(ns.UnitColor(unit))
+            end
         end)
         painting = false
     end
